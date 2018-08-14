@@ -1,6 +1,9 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Azure.WebJobs.Host;
@@ -16,20 +19,33 @@ namespace DurableFunctionsLab
         {
             var outputs = new List<string>();
 
-            // Replace "hello" with the name of your Durable Activity Function.
-            outputs.Add(await context.CallActivityAsync<string>("ImportWorkflow_Hello", "Tokyo"));
-            outputs.Add(await context.CallActivityAsync<string>("ImportWorkflow_Hello", "Seattle"));
-            outputs.Add(await context.CallActivityAsync<string>("ImportWorkflow_Hello", "London"));
-
-            // returns ["Hello Tokyo!", "Hello Seattle!", "Hello London!"]
-            return outputs;
+            var ratesXml = await context.CallActivityWithRetryAsync<string>("ImportWorkflow_DownloadRates", null, new RetryOptions(TimeSpan.FromMinutes(10), 100));
+            var exchangeRates = await context.CallActivityAsync<IEnumerable<ExchangeRate>>("ImportWorkflow_ParseRatesXml", ratesXml);
+            return (from er in exchangeRates select er.Ccy1).ToList();
         }
 
-        [FunctionName("ImportWorkflow_Hello")]
-        public static string SayHello([ActivityTrigger] string name, ILogger log)
+        [FunctionName("ImportWorkflow_DownloadRates")]
+        public static async Task<String> DownloadRates([ActivityTrigger] string notUsed, ILogger log)
         {
-            log.LogInformation($"Saying hello to {name}.");
-            return $"Hello {name}!";
+            Uri exchangeRatesUri = new Uri("http://www.nationalbanken.dk/_vti_bin/DN/DataService.svc/CurrencyRatesXML?lang=da");
+            using (var client = new HttpClient()) {
+                return await client.GetStringAsync(exchangeRatesUri);
+            }
+        }
+
+        [FunctionName("ImportWorkflow_ParseRatesXml")]
+        public static async Task<IEnumerable<ExchangeRate>> ParseRatesXml([ActivityTrigger] string ratesXml, ILogger log) {
+            XDocument document = XDocument.Parse(ratesXml);
+            var danishFormat = System.Globalization.CultureInfo.GetCultureInfo("da-DK");
+            return 
+                from exchangeRates in document.Root.Elements("exchangerates")
+                let referenceCurrency = exchangeRates.Attribute("refcurr").Value
+                    from dailyRates in exchangeRates.Elements("dailyrates")
+                    let date = DateTime.Parse(dailyRates.Attribute("id").Value)
+                        from currency in dailyRates.Elements("currency")
+                        let rate = Decimal.Parse(currency.Attribute("rate").Value, danishFormat)
+                        let baseCurrency = currency.Attribute("code").Value
+                        select ExchangeRate.Create(baseCurrency, referenceCurrency, rate);
         }
 
         [FunctionName("ImportWorkflow_HttpStart")]
