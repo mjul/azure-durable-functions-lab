@@ -1,8 +1,10 @@
+using System;
+
 namespace DurableFunctionsLab
 {
     public struct ExchangeRate
     {
-        private ExchangeRate(string ccy1, string ccy2, decimal rate)
+        private ExchangeRate(string ccy1, string ccy2, decimal rate, DateTime date)
         {
             if (string.IsNullOrWhiteSpace(ccy1))
             {
@@ -17,14 +19,16 @@ namespace DurableFunctionsLab
             Ccy1 = ccy1;
             Ccy2 = ccy2;
             Rate = rate;
+            Date = date;
         }
 
-        public string Ccy1 { get; }
-        public string Ccy2 { get; }
-        public decimal Rate { get; }
+        public string Ccy1; 
+        public string Ccy2;
+        public decimal Rate;
+        public DateTime Date;
 
-        public static ExchangeRate Create(string baseCurrency, string currency, decimal rate) {
-            return new ExchangeRate(baseCurrency, currency, rate);
+        public static ExchangeRate Create(string baseCurrency, string currency, decimal rate, DateTime date) {
+            return new ExchangeRate(baseCurrency, currency, rate, date);
         }
     }
 }

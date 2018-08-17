@@ -38,14 +38,15 @@ namespace DurableFunctionsLab
             XDocument document = XDocument.Parse(ratesXml);
             var danishFormat = System.Globalization.CultureInfo.GetCultureInfo("da-DK");
             return 
-                from exchangeRates in document.Root.Elements("exchangerates")
-                let referenceCurrency = exchangeRates.Attribute("refcurr").Value
+                from exchangeRates in new [] {document.Root}
+                where exchangeRates.Name.LocalName == "exchangerates"
+                let referenceCurrency = exchangeRates.Attribute("refcur").Value
                     from dailyRates in exchangeRates.Elements("dailyrates")
                     let date = DateTime.Parse(dailyRates.Attribute("id").Value)
                         from currency in dailyRates.Elements("currency")
-                        let rate = Decimal.Parse(currency.Attribute("rate").Value, danishFormat)
+                        let rate = Decimal.Parse(currency.Attribute("rate").Value, danishFormat)/100m
                         let baseCurrency = currency.Attribute("code").Value
-                        select ExchangeRate.Create(baseCurrency, referenceCurrency, rate);
+                        select ExchangeRate.Create(baseCurrency, referenceCurrency, rate, date.Date);
         }
 
         [FunctionName("ImportWorkflow_HttpStart")]
